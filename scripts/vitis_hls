@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# ----------------------------------------------------------------------------
+# File        : vitis_hls
+# Description : Local vitis_hls launcher. The vendor install at
+#               /opt/Xilinx/2025.2/Vitis/bin/ shipped only the unwrapped
+#               binary; this script fills in the missing wrapper by
+#               sourcing xilinx_env.sh, changing into the Vitis root
+#               (so relative resource paths like scripts/builtin.tcl
+#               resolve), and exec'ing the unwrapped binary.
+#
+#               Usage: exactly like the real vitis_hls, e.g.:
+#                   ./scripts/vitis_hls -version
+#                   ./scripts/vitis_hls -f hls/scripts/run_csim.tcl
+#
+# Author      : Gyusup LEE <gyu2910@waric.co.kr>
+# Created     : 2026-08-20
+# Copyright   : (c) 2026 Gyusup LEE. All rights reserved.
+# ----------------------------------------------------------------------------
+
+set -u
+
+_script_dir="$(cd "$(dirname "$0")" && pwd)"
+
+# Load env vars if not already loaded.
+if [ -z "${XILINX_HLS_BIN:-}" ]; then
+    # shellcheck disable=SC1091
+    . "$_script_dir/xilinx_env.sh" > /dev/null
+fi
+
+if [ ! -x "$XILINX_HLS_BIN" ]; then
+    echo "vitis_hls launcher: $XILINX_HLS_BIN not executable" >&2
+    exit 1
+fi
+
+# CWD must be somewhere the binary's built-in TCL scripts can be found
+# (they are referenced as scripts/builtin.tcl relative to the Vitis root).
+# We change into $XILINX_VITIS and preserve the caller's original CWD in
+# OLDPWD so TCL scripts can `cd $env(OLDPWD)` if they need to.
+cd "$XILINX_VITIS"
+export OLDPWD
+
+exec "$XILINX_HLS_BIN" "$@"

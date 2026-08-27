@@ -31,6 +31,7 @@ export XILINX_VITIS="$XILINX_INSTALL/Vitis"
 export XILINX_HLS="$XILINX_INSTALL/Vitis"
 export XILINX_VIVADO="$XILINX_INSTALL/Vivado"
 export RDI_DATADIR="$XILINX_INSTALL/Vitis/data"
+export TCL_LIBRARY="$XILINX_INSTALL/tps/tcl/tcl8.6"
 
 # vitis_hls launcher is missing from the top-level bin/ in this install;
 # expose the unwrapped binary path so callers can invoke it directly
@@ -38,7 +39,40 @@ export RDI_DATADIR="$XILINX_INSTALL/Vitis/data"
 export XILINX_HLS_BIN="$XILINX_VITIS/bin/unwrapped/lnx64.o/vitis_hls"
 
 PATH="$XILINX_VITIS/bin:$XILINX_VIVADO/bin:$PATH"
-LD_LIBRARY_PATH="$XILINX_VITIS/lib/lnx64.o:${LD_LIBRARY_PATH:-}"
+
+# Build LD_LIBRARY_PATH using the vendor helper that appends the correct
+# distro-specific subdirectory (Ubuntu/24, SuSE, Rhel, ...). Vendor
+# ldlibpath.sh only knows Ubuntu 18/20/22/24; on newer releases (e.g.,
+# 26.04) it drops the version subdir and vendor-shipped compat libs like
+# libncurses.so.5 become invisible. XILINX_UBUNTU_FALLBACK forces the
+# closest supported version subdir when needed. Override by setting it
+# before sourcing this file.
+: "${XILINX_UBUNTU_FALLBACK:=24}"
+
+_ldlibpath_helper="$XILINX_VITIS/bin/ldlibpath.sh"
+_vitis_libs="$XILINX_VITIS/lib/lnx64.o"
+_vivado_libs="$XILINX_VIVADO/lib/lnx64.o"
+if [ -x "$_ldlibpath_helper" ]; then
+    _vitis_libs="$("$_ldlibpath_helper" "$_vitis_libs" 2>/dev/null)"
+    _vivado_libs="$("$_ldlibpath_helper" "$_vivado_libs" 2>/dev/null)"
+fi
+
+# If we are on Ubuntu but the helper did not add a version subdir, splice
+# in the fallback (e.g., Ubuntu/24) directly.
+if [ -f /etc/os-release ] && grep -qi "^ID=ubuntu" /etc/os-release; then
+    _fb_vitis="$XILINX_VITIS/lib/lnx64.o/Ubuntu/$XILINX_UBUNTU_FALLBACK"
+    _fb_vivado="$XILINX_VIVADO/lib/lnx64.o/Ubuntu/$XILINX_UBUNTU_FALLBACK"
+    if [ -d "$_fb_vitis"  ] && ! printf '%s' "$_vitis_libs"  | grep -q "/Ubuntu/[0-9]"; then
+        _vitis_libs="$_fb_vitis:$_vitis_libs"
+    fi
+    if [ -d "$_fb_vivado" ] && ! printf '%s' "$_vivado_libs" | grep -q "/Ubuntu/[0-9]"; then
+        _vivado_libs="$_fb_vivado:$_vivado_libs"
+    fi
+    unset _fb_vitis _fb_vivado
+fi
+
+LD_LIBRARY_PATH="$_vitis_libs:$_vivado_libs:${LD_LIBRARY_PATH:-}"
+unset _ldlibpath_helper _vitis_libs _vivado_libs
 
 export PATH LD_LIBRARY_PATH
 
