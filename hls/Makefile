@@ -11,25 +11,23 @@
 
 HLS_DIR       := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 REPO_ROOT     := $(abspath $(HLS_DIR)/..)
-XILINX_ENV    := $(REPO_ROOT)/scripts/xilinx_env.sh
+VITIS_HLS     := $(REPO_ROOT)/scripts/vitis_hls
 BUILD_DIR     := $(HLS_DIR)/build
 
 PROJECT_NAME  ?= gvp_csim
 CSV_PATH      ?= $(REPO_ROOT)/c_model/vectors/fft_dma_vectors.csv
 
-# Source the env script, then execute the unwrapped vitis_hls binary (see
-# docs/GVP_HLS_GUIDE.md for why the direct binary is required on this box).
-HLS_INVOKE    := bash -c '. $(XILINX_ENV) >/dev/null && \
-                          PROJECT_NAME=$(PROJECT_NAME) \
-                          CSV_PATH=$(CSV_PATH) \
-                          "$$XILINX_HLS_BIN" -f $(1)'
+# scripts/vitis_hls sources xilinx_env.sh and CDs into $XILINX_VITIS before
+# exec'ing the unwrapped binary (needed so scripts/builtin.tcl resolves).
+HLS_INVOKE    := PROJECT_NAME=$(PROJECT_NAME) CSV_PATH=$(CSV_PATH) $(VITIS_HLS) -f
 
 .PHONY: all csim clean help
 
 all: csim
 
 csim:
-	@$(call HLS_INVOKE,$(HLS_DIR)/scripts/run_csim.tcl)
+	@mkdir -p $(BUILD_DIR)
+	@$(HLS_INVOKE) $(HLS_DIR)/scripts/run_csim.tcl
 
 clean:
 	rm -rf $(BUILD_DIR)

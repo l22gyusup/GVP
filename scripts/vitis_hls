@@ -2,15 +2,25 @@
 # ----------------------------------------------------------------------------
 # File        : vitis_hls
 # Description : Local vitis_hls launcher. The vendor install at
-#               /opt/Xilinx/2025.2/Vitis/bin/ shipped only the unwrapped
-#               binary; this script fills in the missing wrapper by
-#               sourcing xilinx_env.sh, changing into the Vitis root
-#               (so relative resource paths like scripts/builtin.tcl
-#               resolve), and exec'ing the unwrapped binary.
+#               /opt/Xilinx/2025.2/Vitis/bin/ omitted the top-level
+#               vitis_hls wrapper script, and the vendor init helpers
+#               reference tool paths under /home/ubuntu/Xilinx/.
+#               This script bridges both gaps:
+#                 1. Sources xilinx_env.sh to bring in the Ubuntu 26.04
+#                    LD_LIBRARY_PATH fallback (vendor helper only knows
+#                    up to Ubuntu/24).
+#                 2. Spoofs $0 to the vendor bin/vitis_hls location so
+#                    setupEnv.sh's dirname-based path derivation works.
+#                 3. Uses the vendor loader (same pattern as bin/vivado
+#                    and bin/vitis) to launch the unwrapped binary.
+#
+#               Prerequisite: /home/ubuntu/Xilinx must exist and point
+#               at the real install (see docs/GVP_HLS_GUIDE.md Section
+#               1.2 Option B).
 #
 #               Usage: exactly like the real vitis_hls, e.g.:
-#                   ./scripts/vitis_hls -version
-#                   ./scripts/vitis_hls -f hls/scripts/run_csim.tcl
+#                   scripts/vitis_hls -version
+#                   scripts/vitis_hls -f hls/scripts/run_csim.tcl
 #
 # Author      : Gyusup LEE <gyu2910@waric.co.kr>
 # Created     : 2026-08-20
@@ -21,22 +31,23 @@ set -u
 
 _script_dir="$(cd "$(dirname "$0")" && pwd)"
 
-# Load env vars if not already loaded.
-if [ -z "${XILINX_HLS_BIN:-}" ]; then
+# Step 1: our env (LD_LIBRARY_PATH with Ubuntu 26.04 fallback).
+if [ -z "${XILINX_VITIS:-}" ]; then
     # shellcheck disable=SC1091
     . "$_script_dir/xilinx_env.sh" > /dev/null
 fi
 
-if [ ! -x "$XILINX_HLS_BIN" ]; then
-    echo "vitis_hls launcher: $XILINX_HLS_BIN not executable" >&2
+_fake_wrapper="$XILINX_VITIS/bin/vitis_hls"
+
+if [ ! -x "$XILINX_VITIS/bin/unwrapped/lnx64.o/vitis_hls" ]; then
+    echo "vitis_hls launcher: unwrapped binary missing under $XILINX_VITIS/bin/unwrapped/lnx64.o/" >&2
     exit 1
 fi
 
-# CWD must be somewhere the binary's built-in TCL scripts can be found
-# (they are referenced as scripts/builtin.tcl relative to the Vitis root).
-# We change into $XILINX_VITIS and preserve the caller's original CWD in
-# OLDPWD so TCL scripts can `cd $env(OLDPWD)` if they need to.
-cd "$XILINX_VITIS"
-export OLDPWD
-
-exec "$XILINX_HLS_BIN" "$@"
+# Step 2 + 3: spoof $0 so setupEnv.sh derives RDI_BINROOT correctly, then
+# hand off to the vendor loader.
+exec bash -c '
+    . "$(dirname "$0")/setupEnv.sh"
+    RDI_PROG=$(basename "$0")
+    exec "$RDI_BINROOT/loader" -exec "$RDI_PROG" "$@"
+' "$_fake_wrapper" "$@"

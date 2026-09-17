@@ -19,7 +19,16 @@
 # Copyright   : (c) 2026 Gyusup LEE. All rights reserved.
 # ----------------------------------------------------------------------------
 
-XILINX_INSTALL=${XILINX_INSTALL:-/opt/Xilinx/2025.2}
+# Prefer the /home/ubuntu path when the symlink is in place; vendor settings
+# and internal Vitis paths reference this location and mismatched strings
+# (even if resolving to the same real path) trigger tool init failures.
+if [ -z "${XILINX_INSTALL:-}" ]; then
+    if [ -d /home/ubuntu/Xilinx/2025.2 ]; then
+        XILINX_INSTALL=/home/ubuntu/Xilinx/2025.2
+    else
+        XILINX_INSTALL=/opt/Xilinx/2025.2
+    fi
+fi
 
 if [ ! -d "$XILINX_INSTALL" ]; then
     echo "xilinx_env: XILINX_INSTALL=$XILINX_INSTALL not found" >&2
